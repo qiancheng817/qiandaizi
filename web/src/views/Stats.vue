@@ -97,21 +97,21 @@ function pie(title, data, colorMap) {
   return {
     title: { text: title, left: "center", top: 0, textStyle: { fontSize: 14 } },
     tooltip: { trigger: "item", formatter: "{b}: ¥{c} ({d}%)" },
-    // legend 放上方（用户要求），全部显示不分页；分类多时自然换行多行
-    legend: { top: 24, type: "plain", width: "96%", itemWidth: 10, itemHeight: 10, textStyle: { fontSize: 11 } },
+    // legend 放上方；分类多时自然换行多行
+    legend: { top: 28, type: "plain", width: "96%", itemWidth: 10, itemHeight: 10, textStyle: { fontSize: 11 } },
     color: PALETTE,
     series: [{
       name: title,
       type: "pie",
-      // 饼图水平方向尽量拉长、垂直方向收紧，label 横向更紧凑
-      radius: ["18%", "46%"],
-      center: ["50%", "56%"],
+      // 饼图整体下移、缩小外半径，给上方 legend 留足空间，避免 label 往上窜压到 legend
+      radius: ["16%", "40%"],
+      center: ["50%", "60%"],
       cursor: "pointer",
       avoidLabelOverlap: true,
       itemStyle: { borderRadius: 4, borderColor: "transparent", borderWidth: 1 },
-      // label 名称 + 百分比放一行（紧凑），引线再缩短
+      // label 名称 + 百分比放一行，引线缩短避免外溢
       label: { formatter: "{b} {d}%", fontSize: 10.5, edgeDistance: 2 },
-      labelLine: { length: 4, length2: 6 },
+      labelLine: { length: 3, length2: 4 },
       data: data.map((d) => ({
         name: d.name,
         value: Number(d.value.toFixed(2)),
