@@ -1,6 +1,8 @@
 # 钱袋子 · NAS自建记账本
 
-基于开源项目 dingdangdog/cashbook 按需修改而来，本地已重命名为 jizhang，原项目地址：https://github.com/dingdangdog/cashbook
+<p align="center"><img src="web/public/og-image.png" alt="钱袋子" width="480" /></p>
+
+基于开源项目 dingdangdog/cashbook 按需修改而来，本地已重命名为 **qiandaizi（钱袋子）**，原项目地址：https://github.com/dingdangdog/cashbook
 
 单容器 + SQLite 的个人/家庭记账应用，专为**飞牛 NAS（fnOS）**部署设计。
 一个 `docker compose up` 就跑起来，不需要额外的数据库容器。
@@ -38,13 +40,14 @@
 
 ## 一、部署到飞牛 NAS（推荐：拉预编译镜像，无需在 NAS 编译）
 
-镜像由 GitHub Actions 自动构建，**同时**发布到 Docker Hub 和 GitHub 容器仓库（GHCR），两者同名同内容，多架构 amd64 / arm64：
+镜像由 GitHub Actions 自动构建并发布到 **GitHub 容器仓库（GHCR）**，多架构 amd64 / arm64：
 
-- `h223492759/jizhang:latest` —— 仓库自带的 `docker-compose.yml` 用的就是这个（Docker Hub）
-- `ghcr.io/h223492759/jizhang:latest` —— 备选，想换在 compose 里改 `image` 即可
+- `ghcr.io/qiancheng817/qiandaizi:latest` —— 仓库自带的 `docker-compose.yml` 默认拉这个
 
-两者都带 `latest` 与具体版本号 tag（如 `v260910-1804`）。**想固定版本、避免 `latest` 意外升级，就用版本号 tag。**
+同时带 `latest` 与具体版本号 tag（如 `v260923-1030`）。**想固定版本、避免 `latest` 意外升级，就用版本号 tag。**
 你在飞牛上只要拉这个现成镜像跑起来，**不需要在 NAS 上装依赖、编译 SQLite**，比原项目还简单（单容器，连数据库容器都不要）。
+
+> 想同时发布到 Docker Hub？在仓库 Settings → Secrets → Actions 里配置 `DOCKERHUB_USERNAME` 和 `DOCKERHUB_TOKEN` 即自动启用，不用改任何代码。
 
 ### 第 1 步：配置镜像源（关键，否则拉不下来）
 
@@ -58,9 +61,9 @@
 
 ### 第 2 步：准备两个文件
 
-在 NAS 上建一个目录（示例：`/vol1/1000/docker/jizhang`），放进去：
+在 NAS 上建一个目录（示例：`/vol1/1000/docker/qiandaizi`），放进去：
 
-- `docker-compose.yml`（仓库里已写好，默认拉 `h223492759/jizhang:latest`）
+- `docker-compose.yml`（仓库里已写好，默认拉 `ghcr.io/qiancheng817/qiandaizi:latest`）
 - `.env`（复制 `.env.example` 改名，至少改 `JWT_SECRET` 和 `ADMIN_PASSWORD`）
 
 ```ini
@@ -80,7 +83,7 @@ ADMIN_PASSWORD=你的强密码
 **方式 A —— 终端（最快）**
 
 ```bash
-cd /vol1/1000/docker/jizhang      # 换成你自己的目录
+cd /vol1/1000/docker/qiandaizi      # 换成你自己的目录
 docker compose up -d
 ```
 
@@ -90,7 +93,7 @@ docker compose up -d
 
 1. 打开飞牛「**Docker**」应用 → 左侧「**Compose**」
 2. 点「**新增项目**」
-3. 项目名填 `jizhang`
+3. 项目名填 `qiandaizi`
 4. 路径选到上面的目录（里面要有 `docker-compose.yml` 和 `.env`）
 5. 确认内容 → 点「**部署**」→ 等状态 `running`
 
@@ -111,7 +114,7 @@ http://你的NAS内网IP:9600
 ## 二、常用运维命令
 
 ```bash
-cd /vol1/1000/docker/jizhang      # 换成你自己的目录
+cd /vol1/1000/docker/qiandaizi      # 换成你自己的目录
 
 docker compose logs -f          # 看实时日志
 docker compose restart          # 重启
@@ -136,7 +139,7 @@ docker compose ps               # 查看状态（healthy 表示健康检查通�
 
 ```bash
 docker compose stop
-cp -r data ~/jizhang-backup-$(date +%Y%m%d)
+cp -r data ~/qiandaizi-backup-$(date +%Y%m%d)
 docker compose start
 ```
 
@@ -237,7 +240,7 @@ AI_MODEL=qwen2.5:7b
 
 ---
 
-## 六、本地开发（Windows / Mac）
+## 八、本地开发（Windows / Mac）
 
 ```bash
 # 后端
@@ -254,26 +257,26 @@ npm run dev          # http://localhost:5173，已配置代理到后端
 
 ---
 
-## 七、常见问题
+## 九、常见问题
 
 **Q：端口 9600 被占用？**
 改 `docker-compose.yml` 里 `ports` 冒号左边的数字，比如 `"9700:9600"`，然后访问 9700。
 
 **Q：拉镜像报 `context deadline exceeded` / `403` / `401`？**
-说明镜像源没配对。镜像在 Docker Hub（`h223492759/jizhang`）和 GHCR（`ghcr.io/h223492759/jizhang`）各有一份，走哪个都需要镜像源代理对应的域名。确保飞牛镜像源只保留 `https://docker.1panel.dev`（它同时代理 docker.io 与 ghcr.io），删掉 `xuanyuan.me`(429) / `docker.fnnas.com`(401) / 个人阿里云加速器(403) 这些失效源，并**重启 Docker / NAS** 后重试。
+说明镜像源没配对。镜像发布在 GHCR（`ghcr.io/qiancheng817/qiandaizi`），需要镜像源代理 ghcr.io 域名。确保飞牛镜像源保留 `https://docker.1panel.dev`（同时代理 docker.io 与 ghcr.io），删掉 `xuanyuan.me`(429) / `docker.fnnas.com`(401) / 个人阿里云加速器(403) 这些失效源，并**重启 Docker / NAS** 后重试。
 
 **Q：想更新到最新版？**
 `docker compose pull && docker compose up -d` 即可拉新镜像重启（数据在 `./data` 不受影响）。镜像由 GitHub Actions 在每次推送到 `main` 时自动重新构建发布。
 
 **Q：我想自己改代码后重新构建镜像？**
-方式一：把改动推到 GitHub `main` 分支，Actions 会自动构建并覆盖 `h223492759/jizhang:latest` 与 `ghcr.io/h223492759/jizhang:latest`。
+方式一：把改动推到 GitHub `main` 分支，Actions 会自动构建并覆盖 `ghcr.io/qiancheng817/qiandaizi:latest`。
 方式二（纯本地）：保留 `Dockerfile`，在目录内 `docker compose up -d --build`；此时需要 NAS 能拉到 `node:22-bookworm-slim` 基础镜像（走镜像源），且编译 SQLite 需要一点时间和内存。
 
 **Q：忘记管理员密码？**
 停容器 → 删掉 `data/jizhang.db` 会连数据一起没（慎用）。更稳妥的做法是在 `.env` 里改 `ADMIN_USERNAME` 为一个新名字重启，会创建一个新管理员账号，登录后再处理旧账号。
 
 **Q：数据目录跑到了别处 / 多出一个 `docker` 目录？**
-`volumes` 若写成绝对路径（如 `/vol1/1000/docker/jizhang/data:/app/data`），Docker 会**按字面新建**这个宿主目录——飞牛的共享文件夹是 `Docker`（大写）而路径写成 `docker`（小写）时，就会凭空多出一个新目录，数据也跟着过去。
+`volumes` 若写成绝对路径（如 `/vol1/1000/docker/qiandaizi/data:/app/data`），Docker 会**按字面新建**这个宿主目录——飞牛的共享文件夹是 `Docker`（大写）而路径写成 `docker`（小写）时，就会凭空多出一个新目录，数据也跟着过去。
 **建议保持仓库默认的相对路径 `./data:/app/data`**：数据落在你选的项目目录下，与盘符、大小写、存储空间编号都无关。已经写死过的：停容器 → 把新目录里的 `data` 移回正确位置（或在正确目录重建项目）→ 再启动。
 
 **Q：想再部署一个空白实例（测试 / 给家人用）？**
@@ -287,7 +290,7 @@ npm run dev          # http://localhost:5173，已配置代理到后端
 ## 目录结构
 
 ```
-jizhang/
+qiandaizi/
 ├── Dockerfile              # 多阶段构建：前端打包 → 后端依赖 → 精简运行镜像
 ├── docker-compose.yml      # 飞牛一键部署
 ├── .env.example            # 环境变量模板

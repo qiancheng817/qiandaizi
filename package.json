@@ -1,7 +1,7 @@
 {
-  "name": "jizhang-nas",
+  "name": "qiandaizi-nas",
   "version": "1.0.0",
-  "description": "自建记账本 - 单容器 + SQLite，适合飞牛 NAS 部署",
+  "description": "钱袋子 - 自建记账本，单容器 + SQLite，适合飞牛 NAS 部署",
   "type": "module",
   "main": "server/index.js",
   "scripts": {

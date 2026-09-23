@@ -177,13 +177,13 @@ function navReset() {
 onMounted(loadNav);
 
 // ---------------- 关于信息（合并到外观 & 关于） ----------------
-const aboutMeta = ref({ name: "记账本", version: "…" });
+const aboutMeta = ref({ name: "钱袋子", version: "…" });
 async function loadAbout() {
   try {
     const { data } = await api.get("/meta");
     aboutMeta.value = data;
   } catch {
-    aboutMeta.value = { name: "记账本", version: "dev" };
+    aboutMeta.value = { name: "钱袋子", version: "dev" };
   }
 }
 async function copyVersion() {
@@ -355,12 +355,12 @@ onMounted(loadAbout);
       </div>
       <div class="row" style="align-items:center;gap:14px;margin-top:12px">
         <span class="muted">开源仓库</span>
-        <a href="https://github.com/h223492759/jizhang" target="_blank" rel="noopener" class="gh-link">
-          github.com/h223492759/jizhang ↗
+        <a href="https://github.com/qiancheng817/qiandaizi" target="_blank" rel="noopener" class="gh-link">
+          github.com/qiancheng817/qiandaizi ↗
         </a>
       </div>
       <p class="muted" style="font-size:13px;margin-top:14px;line-height:1.7">
-        记账本 · 自建版　|　数据存储于本机 SQLite，完全私有可控。<br />
+        钱袋子 · 自建版　|　数据存储于本机 SQLite，完全私有可控。<br />
         新增账号请管理员到「用户管理」页操作；端口等配置改 docker-compose 环境变量后重启容器。<br />
         版本号格式 vYYMMDD-HHMM，对应镜像构建时间。
       </p>

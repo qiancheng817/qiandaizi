@@ -1,6 +1,6 @@
 # 在飞牛 NAS 上用「新增项目」再部署一个「空白」记账实例（第二实例）
 
-> 适用场景：你已经有跑着的记账（`http://NAS_IP:9600`，容器名 `jizhang`），
+> 适用场景：你已经有跑着的记账（`http://NAS_IP:9600`，容器名 `qiandaizi`），
 > 现在想用**飞牛 Docker → Compose → 新增项目**的方式，另起一个**全新的、空的**实例，且**不影响老实例**。
 
 ---
@@ -11,9 +11,9 @@
 
 | # | 项目 | 现有实例 | 第二实例 | 漏改的后果 |
 |---|---|---|---|---|
-| 1 | `container_name` | `jizhang` | **`jizhang-blank`** | ⚠️ **最危险**：同名时 compose 认为容器已存在 → 直接接管/重建**你现有那个**，等于把老实例搞停 |
+| 1 | `container_name` | `qiandaizi` | **`qiandaizi-blank`** | ⚠️ **最危险**：同名时 compose 认为容器已存在 → 直接接管/重建**你现有那个**，等于把老实例搞停 |
 | 2 | 宿主端口 | `9600` | **`9601`** | 端口已被占用，直接起不来 |
-| 3 | 数据目录 | `.../jizhang/data` | **新目录 `.../jizhang-blank/data`** | ⚠️ 若复用同一目录，两个容器同时写同一个 SQLite → **数据库损坏**，两边数据一起坏 |
+| 3 | 数据目录 | `.../qiandaizi/data` | **新目录 `.../qiandaizi-blank/data`** | ⚠️ 若复用同一目录，两个容器同时写同一个 SQLite → **数据库损坏**，两边数据一起坏 |
 | 4 | `JWT_SECRET` | 旧随机串 | **换一个全新的随机串** | 密钥相同 → 在 A 登录拿到的 token 能被 B 接受（越权、串号） |
 
 > 其余（`TZ`、容器内 `PORT=9600`、`DATA_DIR=/app/data`）**保持不动**。
@@ -23,11 +23,11 @@
 
 ## 1. 准备：先建一个独立目录
 
-**文件管理** → 进入你的存储空间 → 找到你放现有实例的那个 docker 目录 → **新建文件夹** `jizhang-blank`
-（和 `jizhang` 并列即可）
+**文件管理** → 进入你的存储空间 → 找到你放现有实例的那个 docker 目录 → **新建文件夹** `qiandaizi-blank`
+（和 `qiandaizi` 并列即可）
 
 > **⚠️ 路径必须以你自己的真实目录为准，别照抄示例。** 飞牛上这个目录可能是 `Docker`（**大写**）也可能是 `docker`（小写），还分 `/vol1`、`/vol2`。
-> **不确定就查**：Docker → 「容器」→ 点 `jizhang` → 看它的**挂载/存储位置**，那就是你需要跟着走的地方。
+> **不确定就查**：Docker → 「容器」→ 点 `qiandaizi` → 看它的**挂载/存储位置**，那就是你需要跟着走的地方。
 > 写错的后果：Docker 会按你写的宿主路径**新建一个目录**（例如凭空多出一个 `docker` 文件夹），数据就跑到那儿去了。
 > 好消息：下面 compose 用的是**相对路径 `./data`**，数据只落在你选的项目目录里，所以只要目录选对，就不会跑偏。
 
@@ -41,8 +41,8 @@
 
 | 字段 | 填什么 |
 |---|---|
-| 项目名称 | `jizhang-blank`（只能小写字母、数字、`-` `_`，**别填中文**） |
-| 路径 | 选第 1 步建好的目录（和现有实例并列的那个 `jizhang-blank`） |
+| 项目名称 | `qiandaizi-blank`（只能小写字母、数字、`-` `_`，**别填中文**） |
+| 路径 | 选第 1 步建好的目录（和现有实例并列的那个 `qiandaizi-blank`） |
 | 来源 | 「**创建 docker-compose.yml**」（另一项是「选择 docker-compose.yml」，用于已有文件） |
 | 创建项目后立即启动 | ✅ 勾上 |
 
@@ -50,9 +50,9 @@
 
 ```yaml
 services:
-  jizhang-blank:
-    image: h223492759/jizhang:v260910-1804
-    container_name: jizhang-blank
+  qiandaizi-blank:
+    image: ghcr.io/qiancheng817/qiandaizi:latest
+    container_name: qiandaizi-blank
     restart: unless-stopped
 
     ports:
@@ -107,10 +107,10 @@ services:
 
 | 名称 | 端口 | 状态 |
 |---|---|---|
-| `jizhang` | `0.0.0.0:9600->9600/tcp` | 健康 ✅ → **老实例没被动** |
-| `jizhang-blank` | `0.0.0.0:9601->9600/tcp` | 健康 ✅ → 新实例 |
+| `qiandaizi` | `0.0.0.0:9600->9600/tcp` | 健康 ✅ → **老实例没被动** |
+| `qiandaizi-blank` | `0.0.0.0:9601->9600/tcp` | 健康 ✅ → 新实例 |
 
-**看日志**：Docker → 容器 → `jizhang-blank` → 「运行日志」，应有：
+**看日志**：Docker → 容器 → `qiandaizi-blank` → 「运行日志」，应有：
 
 ```
 [init] 已创建默认管理员账号：<你的账号> / <你的密码>
@@ -126,12 +126,12 @@ Jizhang 服务已启动: http://0.0.0.0:9600
 
 ## 4. 第二实例的日常运维
 
-界面：Docker → Compose → 找到 `jizhang-blank` → 「启动 / 停止 / 重新部署 / 编辑 / 删除」。
+界面：Docker → Compose → 找到 `qiandaizi-blank` → 「启动 / 停止 / 重新部署 / 编辑 / 删除」。
 
 SSH / 终端：
 
 ```bash
-cd <你选的那个项目目录>          # 例：/vol1/1000/Docker/jizhang-blank
+cd <你选的那个项目目录>          # 例：/vol1/1000/Docker/qiandaizi-blank
 
 docker compose logs -f                          # 看日志
 docker compose restart                          # 重启
@@ -142,7 +142,7 @@ docker compose down && rm -rf data              # ⚠️ 彻底清空重来（�
 ```
 
 - **数据位置**：`<你选的项目目录>/data/jizhang.db`
-- **备份**：`docker compose stop && cp -r data ~/jizhang-blank-backup-$(date +%Y%m%d) && docker compose start`
+- **备份**：`docker compose stop && cp -r data ~/qiandaizi-blank-backup-$(date +%Y%m%d) && docker compose start`
 - 两个实例的**数据、备份、升级完全独立**，互不影响。
 
 ---
@@ -153,7 +153,7 @@ docker compose down && rm -rf data              # ⚠️ 彻底清空重来（�
 |---|---|
 | 新增项目里路径选不了 / 列表里没有 | 目录要先在**文件管理**里建好，界面只能选已存在的目录 |
 | `Error: port is already allocated` 或起不来 | 宿主 9601 被别的服务占了 → 换成 9602/9603（只改冒号左边） |
-| 老实例被重启/重建了 | `container_name` 忘改，两个项目都叫 `jizhang` → 立刻改掉，别重复执行 |
+| 老实例被重启/重建了 | `container_name` 忘改，两个项目都叫 `qiandaizi` → 立刻改掉，别重复执行 |
 | 新实例打开后看到的是老数据 | `volumes` 指向了老实例的 `data` 目录 → 改成新目录，**并把新实例的 data 目录清空重建** |
 | 登录后提示 token 无效 / 串号 | 两个实例 `JWT_SECRET` 相同 → 给第二实例换一个全新随机串，重新部署 |
 | 想改管理员账号密码，改了 compose 没反应 | 账号只在空库首次启动时创建 → 进「用户管理」改，或清空 `data` 重建 |
@@ -165,11 +165,11 @@ docker compose down && rm -rf data              # ⚠️ 彻底清空重来（�
 
 **先别删任何东西。** 数据本身没坏，SQLite 就是一个文件，搬过去就行：
 
-1. **确认真实目录**：Docker → 容器 → 点 `jizhang` → 看挂载位置（例如其实是 `/vol1/1000/Docker/`，大写）。
-2. **停新实例**：Docker → Compose → `jizhang-blank` → 停止。
+1. **确认真实目录**：Docker → 容器 → 点 `qiandaizi` → 看挂载位置（例如其实是 `/vol1/1000/Docker/`，大写）。
+2. **停新实例**：Docker → Compose → `qiandaizi-blank` → 停止。
 3. 二选一：
    - **懒得搬** —— 就用现在这个位置：把界面项目里的 `volumes` 改成 `./data:/app/data`（改成相对路径，以后不会再看天吃饭），然后把那个多余的空目录删掉即可。
-   - **搬到正确目录** —— 在正确位置建好 `jizhang-blank` → 把现在 `data` 整个目录**移动**过去 → 界面把项目路径改到新位置（或删掉项目重建，来源选「选择 docker-compose.yml」）→ 启动。
+   - **搬到正确目录** —— 在正确位置建好 `qiandaizi-blank` → 把现在 `data` 整个目录**移动**过去 → 界面把项目路径改到新位置（或删掉项目重建，来源选「选择 docker-compose.yml」）→ 启动。
 4. 确认新位置里 `data/jizhang.db` 已就位、实例能正常打开后，**再**删那个多余的目录（删前确认里面只剩空壳，没有 `data`）。
 
 > ⚠️ 搬动时务必**先停容器**，且整目录搬（`data` 里有 `.db-wal` / `.db-shm`，只拷 `.db` 会得到损坏副本）。

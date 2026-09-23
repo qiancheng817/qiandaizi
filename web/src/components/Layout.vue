@@ -11,7 +11,7 @@ const router = useRouter();
 const route = useRoute();
 const ready = ref(false);
 const menuOpen = ref(false);
-// 版本号：构建时由服务端 /api/meta 下发（如 v260821-1128），显示在顶部「记账本」右侧
+// 版本号：构建时由服务端 /api/meta 下发（如 v260821-1128），显示在顶部「钱袋子」右侧
 const version = ref("");
 
 // 导航项统一来自 nav.js（与设置页「导航栏管理」共用，避免两处列表漂移）
@@ -30,7 +30,7 @@ onMounted(async () => {
     if (e.message.includes("登录")) router.push("/login");
   }
   ready.value = true;
-  // 拉版本号显示在侧边栏「记账本」右侧
+  // 拉版本号显示在侧边栏「钱袋子」右侧
   try {
     const { data } = await api.get("/meta");
     if (data?.version) version.value = `v${data.version.replace(/^v/i, "")}`;
@@ -60,7 +60,7 @@ function logout() {
   <div class="shell" v-if="ready">
     <!-- 侧边栏（桌面） -->
     <aside class="side hide-mobile">
-      <div class="side-brand"><img class="brand-logo" src="/logo.png" alt="" /><span>记账本</span><em class="side-ver">{{ version }}</em></div>
+      <div class="side-brand"><img class="brand-logo" src="/logo.png" alt="" /><span>钱袋子</span><em class="side-ver">{{ version }}</em></div>
       <nav>
         <a v-for="n in nav" :key="n.name" :class="['nav-item', { active: route.name === n.name }]" @click="go(n.name)">
           <span class="ic">{{ n.icon }}</span>{{ n.label }}
@@ -95,7 +95,7 @@ function logout() {
       <!-- 移动端抽屉 -->
       <div v-if="menuOpen" class="drawer-mask" @click="menuOpen = false">
         <div class="drawer" @click.stop>
-          <div class="side-brand"><img class="brand-logo" src="/logo.png" alt="" /><span>记账本</span><em class="side-ver">{{ version }}</em></div>
+          <div class="side-brand"><img class="brand-logo" src="/logo.png" alt="" /><span>钱袋子</span><em class="side-ver">{{ version }}</em></div>
           <a v-for="n in nav" :key="n.name" :class="['nav-item', { active: route.name === n.name }]" @click="go(n.name)">
             <span class="ic">{{ n.icon }}</span>{{ n.label }}
           </a>
@@ -127,7 +127,7 @@ function logout() {
 }
 .side-brand { font-size: 15px; font-weight: 700; padding: 6px 10px 14px; display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .brand-logo { width: 22px; height: 22px; border-radius: 5px; }
-/* 版本号小字（记账本右侧） */
+/* 版本号小字（钱袋子右侧） */
 .side-ver { font-size: 11px; font-weight: 500; color: var(--text-2, #94a3b8); letter-spacing: 0.2px; margin-left: 2px; }
 .nav-item {
   display: flex; align-items: center; gap: 10px; padding: 10px 12px;

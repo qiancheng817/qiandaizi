@@ -2,7 +2,7 @@
 import { ref, onMounted } from "vue";
 import api from "../api.js";
 
-const meta = ref({ name: "记账本", version: "…" });
+const meta = ref({ name: "钱袋子", version: "…" });
 const loading = ref(true);
 
 onMounted(async () => {
@@ -10,7 +10,7 @@ onMounted(async () => {
     const { data } = await api.get("/meta");
     meta.value = data;
   } catch {
-    meta.value = { name: "记账本", version: "dev" };
+    meta.value = { name: "钱袋子", version: "dev" };
   } finally {
     loading.value = false;
   }
@@ -33,7 +33,7 @@ import { toast } from "../toast.js";
     <h2 class="page-title">关于</h2>
 
     <div class="card block">
-      <img class="logo" src="/logo.png" alt="记账本" />
+      <img class="logo" src="/logo.png" alt="钱袋子" />
       <div class="name">{{ meta.name }}</div>
       <div class="ver" @click="copyVersion" title="点击复制版本号">
         {{ loading ? "读取中…" : meta.version }}
@@ -51,8 +51,8 @@ import { toast } from "../toast.js";
       <div class="row"><span class="k">部署方式</span><span class="v">Docker 单容器</span></div>
       <div class="row">
         <span class="k">开源仓库</span>
-        <a class="v link" href="https://github.com/h223492759/jizhang" target="_blank" rel="noopener">
-          github.com/h223492759/jizhang ↗
+        <a class="v link" href="https://github.com/qiancheng817/qiandaizi" target="_blank" rel="noopener">
+          github.com/qiancheng817/qiandaizi ↗
         </a>
       </div>
     </div>

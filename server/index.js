@@ -130,7 +130,7 @@ setTimeout(function scheduleDaily() {
 
 // ---------- API ----------
 app.get("/api/health", (req, res) => res.json({ ok: true, time: new Date().toISOString() }));
-app.get("/api/meta", (req, res) => res.json({ name: "记账本", version: APP_VERSION }));
+app.get("/api/meta", (req, res) => res.json({ name: "钱袋子", version: APP_VERSION }));
 // 写操作审计（响应后异步记录）。必须在业务路由【之前】挂载：
 // Express 按注册顺序匹配，若挂在业务路由之后，POST/PUT/DELETE 早已被
 // 前面的路由终结响应，永远走不到本中间件 → op_logs 空。

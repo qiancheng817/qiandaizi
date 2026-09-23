@@ -1,13 +1,13 @@
 name: Build and Push Image
 
-# 在 GitHub 上自动把 jizhang 构建成多架构镜像，并推送到：
-#   1) Docker Hub  —— 飞牛 NAS 通过 docker.io 镜像源拉取（已验证你的网络可通）
-#   2) GHCR        —— 备用（GitHub 容器仓库，GITHUB_TOKEN 免密）
-# 推完后在飞牛上只要 `docker compose up -d` 拉镜像即可，无需在 NAS 上编译。
+# 在 GitHub 上自动把 钱袋子（qiandaizi）构建成多架构镜像，并推送到：
+#   1) GHCR        —— ghcr.io/qiancheng817/qiandaizi（GITHUB_TOKEN 免密，开箱即用）
+#   2) Docker Hub  —— 可选：在仓库 Secrets 配置 DOCKERHUB_USERNAME / DOCKERHUB_TOKEN 后自动启用
+# 推完后在 NAS 上只要 `docker compose up -d` 拉镜像即可，无需本地编译。
 #
-# 需要仓库 Secrets：
-#   DOCKERHUB_USERNAME  —— 你的 Docker Hub 用户名
-#   DOCKERHUB_TOKEN     —— Docker Hub 访问令牌（在 hub.docker.com -> Account Settings -> Security -> New Access Token 生成，勾选 Read/Write）
+# 可选仓库 Secrets（不配则只发 GHCR）：
+#   DOCKERHUB_USERNAME —— Docker Hub 用户名
+#   DOCKERHUB_TOKEN    —— Docker Hub 访问令牌（hub.docker.com -> Account Settings -> Security -> New Access Token，勾选 Read/Write）
 
 on:
   push:
@@ -19,14 +19,13 @@ permissions:
   packages: write
 
 env:
-  IMAGE_NAME: jizhang
+  IMAGE_NAME: qiandaizi
 
 jobs:
   # ---------------------------------------------------------------
   # 全新部署冒烟：用【空数据卷】跑真容器，1:1 复现 NAS 上首次
   # `docker compose up -d` 的场景。任何「空库启动即崩」的问题
-  # （如 v2.2.19 的 flows.source 列顺序 bug）都会在这里被拦住，
-  # 不让坏镜像推到 Docker Hub。
+  # 都会在这里被拦住，不让坏镜像推到镜像仓库。
   # ---------------------------------------------------------------
   smoke:
     name: 全新部署冒烟（空数据卷）
@@ -45,7 +44,7 @@ jobs:
           platforms: linux/amd64
           load: true
           push: false
-          tags: jizhang:fresh-smoke
+          tags: qiandaizi:fresh-smoke
           build-args: |
             APP_VERSION=smoke
           cache-from: type=gha
@@ -53,32 +52,32 @@ jobs:
       - name: 空数据卷启动 → 健康检查 → 写入 → 重启，全程断言
         run: |
           set -euo pipefail
-          docker rm -f jz-smoke 2>/dev/null || true
-          docker volume rm jz-smoke-data 2>/dev/null || true
-          docker volume create jz-smoke-data >/dev/null
+          docker rm -f qiandaizi-smoke 2>/dev/null || true
+          docker volume rm qiandaizi-smoke-data 2>/dev/null || true
+          docker volume create qiandaizi-smoke-data >/dev/null
 
           # 全新空卷 = 首次部署
-          docker run -d --name jz-smoke -p 9611:9600 \
+          docker run -d --name qiandaizi-smoke -p 9611:9600 \
             -e JWT_SECRET=smoke-secret \
             -e ADMIN_USERNAME=admin \
             -e ADMIN_PASSWORD=admin123 \
-            -v jz-smoke-data:/app/data \
-            jizhang:fresh-smoke
+            -v qiandaizi-smoke-data:/app/data \
+            qiandaizi:fresh-smoke
 
           wait_health() {
             for i in $(seq 1 60); do
               if curl -sf http://127.0.0.1:9611/api/health >/dev/null 2>&1; then return 0; fi
-              if [ "$(docker inspect -f '{{.State.Running}}' jz-smoke 2>/dev/null)" != "true" ]; then
-                echo "❌ 容器已退出（无限重启）"; docker logs jz-smoke; return 1
+              if [ "$(docker inspect -f '{{.State.Running}}' qiandaizi-smoke 2>/dev/null)" != "true" ]; then
+                echo "❌ 容器已退出（无限重启）"; docker logs qiandaizi-smoke; return 1
               fi
               sleep 2
             done
-            echo "❌ 健康检查超时"; docker logs jz-smoke; return 1
+            echo "❌ 健康检查超时"; docker logs qiandaizi-smoke; return 1
           }
 
           echo "=== 首次启动 ==="
           wait_health
-          docker logs jz-smoke
+          docker logs qiandaizi-smoke
 
           # 版本号必须来自镜像内 /app/VERSION
           curl -sf http://127.0.0.1:9611/api/meta; echo
@@ -99,13 +98,13 @@ jobs:
           echo "核心接口 OK"
 
           echo "=== 重启容器（模拟 NAS 上 docker compose up -d 重跑）==="
-          docker restart jz-smoke
+          docker restart qiandaizi-smoke
           wait_health
           curl -sf -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:9611/api/flows?bookId=1&pageSize=5" \
             | python3 -c 'import sys,json;d=json.load(sys.stdin);assert d["total"]==1, "重启后数据不一致: %s" % d["total"];print("重启后数据仍在 OK")'
 
           echo "=== 启动日志异常断言 ==="
-          LOGS=$(docker logs jz-smoke 2>&1)
+          LOGS=$(docker logs qiandaizi-smoke 2>&1)
           echo "$LOGS"
           if echo "$LOGS" | grep -E "SqliteError|no such column|no such table|校准失败|启动生成失败|启动重建失败|UnhandledPromiseRejection|Error:"; then
             echo "❌ 启动日志出现异常/降级警告"; exit 1
@@ -115,9 +114,9 @@ jobs:
       - name: 清理
         if: ${{ always() }}
         run: |
-          docker logs jz-smoke > /tmp/smoke-final.log 2>&1 || true
-          docker rm -f jz-smoke 2>/dev/null || true
-          docker volume rm jz-smoke-data 2>/dev/null || true
+          docker logs qiandaizi-smoke > /tmp/smoke-final.log 2>&1 || true
+          docker rm -f qiandaizi-smoke 2>/dev/null || true
+          docker volume rm qiandaizi-smoke-data 2>/dev/null || true
 
   build:
     runs-on: ubuntu-latest
@@ -135,7 +134,9 @@ jobs:
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v3
 
+      # Docker Hub 为可选发布渠道：仓库 Secrets 未配置时自动跳过，只发 GHCR
       - name: Log in to Docker Hub
+        if: ${{ secrets.DOCKERHUB_USERNAME != '' }}
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -152,17 +153,28 @@ jobs:
         id: ver
         run: echo "APP_VERSION=v$(TZ=Asia/Shanghai date +%y%m%d-%H%M)" >> "$GITHUB_OUTPUT"
 
+      - name: 计算镜像 tags（Docker Hub 未配置时只发 GHCR）
+        id: tags
+        env:
+          VER: ${{ steps.ver.outputs.APP_VERSION }}
+          DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          REPO_LC="$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
+          TAGS="ghcr.io/${REPO_LC}:latest,ghcr.io/${REPO_LC}:${VER}"
+          if [ -n "$DH_USER" ]; then
+            TAGS="${DH_USER}/${IMAGE_NAME}:latest,${DH_USER}/${IMAGE_NAME}:${VER},${TAGS}"
+          fi
+          echo "repo_lc=${REPO_LC}" >> "$GITHUB_OUTPUT"
+          echo "tags=${TAGS}" >> "$GITHUB_OUTPUT"
+          echo "最终 tags: ${TAGS}"
+
       - name: Build and push (amd64 + arm64)
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ steps.ver.outputs.APP_VERSION }}
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ steps.ver.outputs.APP_VERSION }}
+          tags: ${{ steps.tags.outputs.tags }}
           build-args: |
             APP_VERSION=${{ steps.ver.outputs.APP_VERSION }}
           cache-from: type=gha
@@ -170,25 +182,33 @@ jobs:
 
       - name: 将 GHCR 镜像包设为 Public（便于备用免登录拉取）
         if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          PKG="${GITHUB_REPOSITORY##*/}"
           curl -s -X PUT \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
-            https://api.github.com/user/packages/container/jizhang/visibility \
+            "https://api.github.com/user/packages/container/${PKG}/visibility" \
             -d '{"visibility":"public"}' \
-            || echo "若失败，请到 GitHub -> Packages -> jizhang -> Settings 把可见性改为 Public"
+            || echo "若失败，请到 GitHub -> Packages -> ${PKG} -> Settings 把可见性改为 Public"
 
       - name: 创建 / 更新 GitHub Release（与镜像同步）
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
           TAG="${{ steps.ver.outputs.APP_VERSION }}"
-          DH="${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}"
           REPO="${{ github.repository }}"
+          REPO_LC="${{ steps.tags.outputs.repo_lc }}"
           PREV=$(git tag --sort=-creatordate | head -1)
           if [ -n "$PREV" ] && [ "$PREV" != "$TAG" ]; then RANGE="$PREV..HEAD"; else RANGE="HEAD"; fi
           LOG=$(git log --no-merges --pretty=format:"- %s" -n 25 "$RANGE")
-          BODY=$'## 镜像（构建于 '"$TAG"$'\n\n- Docker Hub：docker pull '"$DH"$':latest  或  docker pull '"$DH"$':'"$TAG"$'\n- GHCR：docker pull ghcr.io/'"$REPO"$':latest  或  docker pull ghcr.io/'"$REPO"$':'"$TAG"$'\n\n## 本次更新\n'"$LOG"
+          BODY="## 镜像（构建于 ${TAG}）"$'\n\n'"- GHCR：docker pull ghcr.io/${REPO_LC}:latest 或 ghcr.io/${REPO_LC}:${TAG}"
+          if [ -n "$DH_USER" ]; then
+            BODY="${BODY}"$'\n'"- Docker Hub：docker pull ${DH_USER}/${IMAGE_NAME}:latest 或 ${DH_USER}/${IMAGE_NAME}:${TAG}"
+          fi
+          BODY="${BODY}"$'\n\n'"## 本次更新"$'\n'"${LOG}"
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Release $TAG 已存在，更新说明"
             gh release edit "$TAG" --notes "$BODY"

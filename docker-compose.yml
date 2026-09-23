@@ -1,9 +1,12 @@
 services:
-  jizhang:
-    # 直接拉取预编译镜像（已发布到 Docker Hub，走 docker.io 镜像源）
-    # 镜像位于 Docker Hub 账户 h223492759；一般无需改动。如需覆盖，在 .env 里设 DOCKERHUB_USERNAME
-    image: ${DOCKERHUB_USERNAME:-h223492759}/jizhang:latest
-    container_name: jizhang
+  qiandaizi:
+    # 拉取预编译镜像，无需本地构建。
+    # 默认走 GHCR（由本仓库 GitHub Actions 自动构建发布）：
+    #   ghcr.io/qiancheng817/qiandaizi:latest
+    # 想换镜像（如 Docker Hub 版或自建 Harbor），在 .env 里设 QIANDAIZI_IMAGE 即可覆盖：
+    #   QIANDAIZI_IMAGE=docker.io/你的账号/qiandaizi:latest
+    image: ${QIANDAIZI_IMAGE:-ghcr.io/qiancheng817/qiandaizi:latest}
+    container_name: qiandaizi
     restart: unless-stopped
 
     ports:

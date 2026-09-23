@@ -46,8 +46,8 @@ async function submit() {
   <div class="auth-wrap">
     <div class="auth-card card">
       <div class="brand">
-        <img class="logo" src="/logo.png" alt="记账本" />
-        <h1>记账本</h1>
+        <img class="logo" src="/logo.png" alt="钱袋子" />
+        <h1>钱袋子</h1>
         <p class="muted">简单 · 好用 · 数据自主可控</p>
       </div>
 
