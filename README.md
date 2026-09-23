@@ -1,4 +1,4 @@
-# Jizhang NAS · 自建记账本
+# 钱袋子 · NAS自建记账本
 
 基于开源项目 dingdangdog/cashbook 按需修改而来，本地已重命名为 jizhang，原项目地址：https://github.com/dingdangdog/cashbook
 
