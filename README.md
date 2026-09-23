@@ -7,6 +7,8 @@
 单容器 + SQLite 的个人/家庭记账应用，专为**飞牛 NAS（fnOS）**部署设计。
 一个 `docker compose up` 就跑起来，不需要额外的数据库容器。
 
+客户端项目https://github.com/qiancheng817/qiandaizi-android
+
 ## 功能一览
 
 | 模块 | 说明 |
