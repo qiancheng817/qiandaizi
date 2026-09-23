@@ -526,6 +526,126 @@ r.delete(
   })
 );
 
+// ==================== 批量操作 ====================
+
+// 批量删除 → 逐条进回收站再物理删（和单条 DELETE 逻辑一致，包裹事务保证原子）
+r.delete(
+  "/batch",
+  requireBook,
+  wrap((req, res) => {
+    const ids = Array.isArray(req.body?.ids)
+      ? req.body.ids.map((x) => Number(x)).filter((x) => x > 0)
+      : [];
+    if (!ids.length) return res.status(400).json({ error: "请选择要删除的记录" });
+
+    const placeholders = ids.map((_, i) => `@id${i}`).join(",");
+    const params = {};
+    ids.forEach((id, i) => { params[`id${i}`] = id; });
+
+    // 验证所有 ID 属于当前账本
+    const exist = db
+      .prepare(`SELECT id FROM flows WHERE book_id=@bookId AND id IN (${placeholders})`)
+      .all({ bookId: req.bookId, ...params })
+      .map((r) => r.id);
+
+    if (!exist.length) return res.json({ deleted: 0 });
+
+    const params2 = {};
+    exist.forEach((id, i) => { params2[`id${i}`] = id; });
+    const ph2 = exist.map((_, i) => `@id${i}`).join(",");
+
+    const tx = db.transaction(() => {
+      // 快照进回收站
+      const curStmt = db.prepare(`SELECT * FROM flows WHERE book_id=@bookId AND id IN (${ph2})`);
+      const rows = curStmt.all({ bookId: req.bookId, ...params2 });
+      const insTrash = db.prepare(
+        `INSERT INTO flows_trash (book_id, user_id, attribution, attribution_uid, type, amount,
+                                  category, payment_method, description, flow_time, created_at,
+                                  source, deleted_by, deleted_by_uid)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+      );
+      for (const cur of rows) {
+        insTrash.run(
+          cur.book_id, cur.user_id, cur.attribution || "", cur.attribution_uid ?? null,
+          cur.type, cur.amount, cur.category || "其他", cur.payment_method || "",
+          cur.description || "", cur.flow_time, cur.created_at || null, cur.source || "",
+          req.user.nickname || req.user.username || "用户", req.user.id
+        );
+      }
+      db.prepare(`DELETE FROM flows WHERE book_id=@bookId AND id IN (${ph2})`).run({
+        bookId: req.bookId, ...params2,
+      });
+      return exist.length;
+    });
+
+    const n = tx();
+    // 水电气解绑（每条单独处理，幂等）
+    try {
+      for (const id of exist) utilityRemoveFlowById(req.bookId, Number(id));
+    } catch (e) { console.error("[utility-remove]", e); }
+    res.json({ deleted: n });
+  })
+);
+
+// 批量修改（支持只改名称 和/或 只改归属）：
+// 前端发 { ids: [..], description?: "新名称", attribution?: "新归属", attribution_uid?: ... }
+// 只提供了哪个字段就改哪个字段，未提供的保持不变
+r.patch(
+  "/batch",
+  requireBook,
+  wrap((req, res) => {
+    const b = req.body || {};
+    const ids = Array.isArray(b.ids)
+      ? b.ids.map((x) => Number(x)).filter((x) => x > 0)
+      : [];
+    if (!ids.length) return res.status(400).json({ error: "请选择要修改的记录" });
+
+    const descSet = b.description !== undefined;
+    const attrSet = b.attribution !== undefined || b.attribution_uid !== undefined;
+    if (!descSet && !attrSet) return res.status(400).json({ error: "没有要修改的字段" });
+
+    const placeholders = ids.map((_, i) => `@id${i}`).join(",");
+    const params = {};
+    ids.forEach((id, i) => { params[`id${i}`] = id; });
+
+    const curStmt = db
+      .prepare(`SELECT id, description, category FROM flows WHERE book_id=@bookId AND id IN (${placeholders})`);
+    const rows = curStmt.all({ bookId: req.bookId, ...params });
+    if (!rows.length) return res.json({ updated: 0 });
+
+    const attr = attrSet ? resolveAttribution(req.bookId, req.user, b) : null;
+
+    const sets = ["updated_at=datetime('now','localtime')"];
+    const runParams = [];
+    if (descSet) {
+      sets.push("description=?");
+      const desc = ((b.description || "").toString().trim());
+      runParams.push(desc);
+    }
+    if (attrSet) {
+      sets.push("attribution=?", "attribution_uid=?");
+      runParams.push(attr.text, attr.uid);
+    }
+    runParams.push(req.bookId);
+    runParams.push(...rows.map((r) => r.id));
+
+    const phIds = rows.map(() => "?").join(",");
+    const sql = `UPDATE flows SET ${sets.join(",")} WHERE book_id=? AND id IN (${phIds})`;
+    db.prepare(sql).run(...runParams);
+
+    // 名称改了可能触发水电气账单关联重建（幂等）
+    if (descSet) {
+      try {
+        for (const r of rows) {
+          utilitySyncFlowById(req.bookId, Number(r.id));
+        }
+      } catch (e) { console.error("[utility-sync]", e); }
+    }
+
+    res.json({ updated: rows.length });
+  })
+);
+
 // ==================== 回收站 ====================
 
 // 回收站列表（按删除时间倒序；删除人 = 昵称，共享账本里能看出是谁删的）

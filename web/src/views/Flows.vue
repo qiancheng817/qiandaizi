@@ -24,6 +24,78 @@ const sortOrder = ref("desc");
 // 分类下拉（按当前类型过滤，2 列展示完整）
 const catOpen = ref(false);
 
+// 批量操作：选中当前页的记录 ID
+const selectedIds = ref(new Set());
+const allChecked = computed(
+  () => data.value.list.length > 0 && data.value.list.every((f) => selectedIds.value.has(f.id))
+);
+const someChecked = computed(
+  () => data.value.list.some((f) => selectedIds.value.has(f.id))
+);
+function toggleAll() {
+  if (allChecked.value) {
+    for (const f of data.value.list) selectedIds.value.delete(f.id);
+  } else {
+    for (const f of data.value.list) selectedIds.value.add(f.id);
+  }
+  selectedIds.value = new Set(selectedIds.value);
+}
+function toggleRow(id) {
+  if (selectedIds.value.has(id)) selectedIds.value.delete(id);
+  else selectedIds.value.add(id);
+  selectedIds.value = new Set(selectedIds.value);
+}
+function clearSelection() {
+  selectedIds.value = new Set();
+}
+
+// 批量修改弹窗
+const showBatchEdit = ref(false);
+const batchForm = ref({ description: "", descriptionEnabled: false, attribution_uid: null, attributionEnabled: false });
+async function openBatchEdit() {
+  batchForm.value = { description: "", descriptionEnabled: false, attribution_uid: null, attributionEnabled: false };
+  await loadMembers();
+  showBatchEdit.value = true;
+}
+async function saveBatchEdit() {
+  const ids = [...selectedIds.value];
+  if (!ids.length) return toast("请先选择记录");
+  const body = { ids };
+  if (batchForm.value.descriptionEnabled) {
+    body.description = (batchForm.value.description || "").trim();
+  }
+  if (batchForm.value.attributionEnabled) {
+    if (batchForm.value.attribution_uid !== null && batchForm.value.attribution_uid !== undefined) {
+      body.attribution_uid = Number(batchForm.value.attribution_uid);
+    }
+  }
+  if (!("description" in body) && !("attribution_uid" in body)) {
+    return toast("请选择至少一项要修改的字段");
+  }
+  try {
+    const { data } = await api.patch("/flows/batch", body);
+    toast(`已修改 ${data.updated} 条`);
+    showBatchEdit.value = false;
+    clearSelection();
+    await load();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+async function batchDelete() {
+  const ids = [...selectedIds.value];
+  if (!ids.length) return toast("请先选择记录");
+  if (!confirm(`确定删除选中的 ${ids.length} 条记录吗？将移入回收站，可在左侧「回收站」恢复。`)) return;
+  try {
+    const { data } = await api.delete("/flows/batch", { data: { ids } });
+    toast(`已删除 ${data.deleted} 条`);
+    clearSelection();
+    await load();
+  } catch (e) {
+    toast(e.message);
+  }
+}
+
 // 查重：重复分组（同日期+类型+金额+名称+分类+支付方式）
 const showDup = ref(false);
 const dupGroups = ref([]);
@@ -321,15 +393,25 @@ function freqText(t) {
 
     <!-- 列表 -->
     <div class="card" style="padding:0;overflow:hidden">
+      <!-- 批量操作工具栏 -->
+      <div v-if="selectedIds.size > 0" class="batch-bar">
+        <span class="muted">已选 <b>{{ selectedIds.size }}</b> 条</span>
+        <div style="flex:1"></div>
+        <button class="btn btn-sm" @click="clearSelection">取消选择</button>
+        <button class="btn btn-sm" @click="openBatchEdit">批量修改</button>
+        <button class="btn btn-sm btn-danger" @click="batchDelete">批量删除</button>
+      </div>
       <div v-if="!data.list.length" class="empty-tip muted">没有符合条件的记录</div>
       <table v-else class="tbl">
         <thead>
           <tr>
+            <th style="width:40px"><input type="checkbox" :checked="allChecked" @change="toggleAll" :indeterminate="someChecked && !allChecked" /></th>
             <th>分类</th><th class="hide-mobile">名称</th><th class="hide-mobile">日期</th><th class="hide-mobile">归属</th><th style="text-align:right">金额</th><th></th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="f in data.list" :key="f.id">
+          <tr v-for="f in data.list" :key="f.id" :class="{ selected: selectedIds.has(f.id) }">
+            <td><input type="checkbox" :checked="selectedIds.has(f.id)" @change="toggleRow(f.id)" /></td>
             <td><span class="ic">{{ catIcon(f.category) }}</span>{{ f.category }}</td>
             <td class="hide-mobile muted">
               <span v-if="f.source === 'ai'" class="ai-tag" title="AI 记账">AI</span>
@@ -493,6 +575,32 @@ function freqText(t) {
 
     <FlowDialog v-model="showDialog" :flow="editing" @saved="load" />
     <SearchFlowsDialog v-model:show="searchOpen" />
+
+    <!-- 批量修改弹窗 -->
+    <div v-if="showBatchEdit" class="modal-mask" @click.self="showBatchEdit=false">
+      <div class="modal" style="max-width:420px">
+        <h3 class="modal-title">批量修改（{{ selectedIds.size }} 条）</h3>
+        <div class="muted small" style="margin-bottom:14px">勾选要修改的字段，未勾选的保持不变。</div>
+
+        <label class="field">
+          <span><input type="checkbox" v-model="batchForm.descriptionEnabled" /> 名称</span>
+          <input class="input" v-model.trim="batchForm.description" :disabled="!batchForm.descriptionEnabled" placeholder="统一改成的名称" />
+        </label>
+
+        <label class="field">
+          <span><input type="checkbox" v-model="batchForm.attributionEnabled" /> 归属</span>
+          <select class="select" v-model.number="batchForm.attribution_uid" :disabled="!batchForm.attributionEnabled">
+            <option :value="0" disabled>选择归属…</option>
+            <option v-for="m in members" :key="m.id" :value="m.id">{{ m.nickname }}</option>
+          </select>
+        </label>
+
+        <div class="row" style="justify-content:flex-end;margin-top:6px;gap:8px">
+          <button class="btn" @click="showBatchEdit=false">取消</button>
+          <button class="btn btn-primary" @click="saveBatchEdit">保存</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -548,4 +656,15 @@ function freqText(t) {
 .dup-cnt { margin-left: auto; font-size: 12px; color: var(--expense); }
 .dup-item { display: flex; align-items: center; gap: 10px; padding: 4px 0; border-top: 1px dashed var(--border); }
 .dup-item.keep { opacity: .6; }
+
+.batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--primary-soft);
+  border-bottom: 1px solid var(--border);
+}
+.tbl tr.selected td { background: var(--primary-soft); }
+.tbl input[type="checkbox"] { cursor: pointer; }
 </style>
