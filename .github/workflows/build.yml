@@ -121,6 +121,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
     needs: smoke          # 全新部署冒烟不过 → 不推镜像
+    env:
+      # 映射到 env 供步骤 if/脚本判断（secrets 不能直接用在 if 表达式里）
+      DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -136,7 +139,7 @@ jobs:
 
       # Docker Hub 为可选发布渠道：仓库 Secrets 未配置时自动跳过，只发 GHCR
       - name: Log in to Docker Hub
-        if: ${{ secrets.DOCKERHUB_USERNAME != '' }}
+        if: ${{ env.DH_USER != '' }}
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -157,7 +160,6 @@ jobs:
         id: tags
         env:
           VER: ${{ steps.ver.outputs.APP_VERSION }}
-          DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
           REPO_LC="$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')"
           TAGS="ghcr.io/${REPO_LC}:latest,ghcr.io/${REPO_LC}:${VER}"
@@ -196,7 +198,6 @@ jobs:
       - name: 创建 / 更新 GitHub Release（与镜像同步）
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
         run: |
           TAG="${{ steps.ver.outputs.APP_VERSION }}"
           REPO="${{ github.repository }}"
