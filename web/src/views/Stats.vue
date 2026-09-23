@@ -39,6 +39,7 @@ const category = ref([]);
 const attribution = ref([]);
 const daily = ref([]);
 const monthly = ref([]);
+const memberSummary = ref([]);
 
 const period = computed(() => {
   if (range.value === "month") {
@@ -58,17 +59,19 @@ const barYear = computed(() =>
 
 async function load() {
   const params = period.value;
-  const [ov, cat, attr, day] = await Promise.all([
+  const [ov, cat, attr, day, msum] = await Promise.all([
     api.get("/stats/overview", { params }),
     // 分类/归属饼图跟随 支出/收入 切换（安卓图表同样只显示当前类型）
     api.get("/stats/category", { params: { ...params, type: type.value } }),
     api.get("/stats/attribution", { params: { ...params, type: type.value } }),
     api.get("/stats/daily", { params }),
+    api.get("/stats/member-summary", { params }),
   ]);
   overview.value = ov.data;
   category.value = cat.data;
   attribution.value = attr.data;
   daily.value = day.data;
+  memberSummary.value = msum.data;
   const { data: mon } = await api.get("/stats/monthly", { params: { year: barYear.value } });
   monthly.value = mon;
 }
@@ -357,6 +360,29 @@ async function onRankClick(name) {
       <div class="card stat"><div class="muted">笔数</div><div class="big">{{ overview.count }}</div></div>
     </div>
 
+    <!-- 每位成员收支汇总 -->
+    <div class="card member-summary" v-if="memberSummary.length">
+      <div class="member-summary-head">
+        <span class="section-title">{{ range==='month' ? selMonth + '月' : (range==='year' ? year + '年' : '所选时段') }} · 每位成员</span>
+      </div>
+      <table class="mem-tbl">
+        <thead>
+          <tr><th>成员</th><th style="text-align:right">收入</th><th style="text-align:right">支出</th><th style="text-align:right">结余</th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="m in memberSummary" :key="m.name">
+            <td>
+              <span class="mem-dot" :style="m.color ? { background: m.color } : null"></span>
+              <span class="mem-name">{{ m.name }}</span>
+            </td>
+            <td style="text-align:right" class="income">{{ fmt(m.income) }}</td>
+            <td style="text-align:right" class="expense">{{ fmt(m.expense) }}</td>
+            <td style="text-align:right" :class="m.balance>=0?'income':'expense'"><b>{{ fmt(m.balance) }}</b></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <div class="grid charts">
       <div class="card">
         <div class="chart-toolbar">
@@ -502,6 +528,17 @@ export default { components: { EChart } };
 .seg button.on { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: var(--shadow); }
 .cards { grid-template-columns: repeat(4,1fr); margin-bottom: 16px; }
 .stat .big { font-size: 20px; font-weight: 800; margin-top: 6px; }
+
+.member-summary { margin-bottom: 16px; }
+.member-summary-head { margin-bottom: 10px; }
+.member-summary-head .section-title { margin: 0; font-size: 14px; font-weight: 600; }
+.mem-tbl { width: 100%; border-collapse: collapse; }
+.mem-tbl th { text-align: left; font-size: 12px; color: var(--text-2); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.mem-tbl td { padding: 8px; font-size: 14px; border-bottom: 1px solid var(--border); }
+.mem-tbl tr:last-child td { border-bottom: none; }
+.mem-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; background: var(--text-2); vertical-align: middle; }
+.mem-name { font-weight: 600; vertical-align: middle; }
+
 .charts { grid-template-columns: repeat(2, 1fr); }
 .daily-card { grid-column: span 2; }
 .clickable-hint::after { content: "点击查看明细"; position: absolute; top: 8px; right: 12px; font-size: 11px; color: var(--text-2); opacity: .7; pointer-events: none; }

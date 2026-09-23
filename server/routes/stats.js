@@ -107,6 +107,37 @@ r.get(
   })
 );
 
+// 每位成员的收支汇总（跟随当前统计页的 period 选择：月/年/自定义）
+// 返回 [{ name, color, income, expense, balance }]
+r.get(
+  "/member-summary",
+  requireBook,
+  wrap((req, res) => {
+    const { where, p } = range(req);
+    const rows = db
+      .prepare(
+        `SELECT COALESCE(u.nickname, f.attribution) AS name,
+                MAX(u.color) AS color,
+                COALESCE(SUM(CASE WHEN f.type='income'  THEN f.amount END),0) AS income,
+                COALESCE(SUM(CASE WHEN f.type='expense' THEN f.amount END),0) AS expense
+         FROM flows f LEFT JOIN users u ON u.id = f.attribution_uid
+         ${where}
+         GROUP BY f.attribution_uid, CASE WHEN f.attribution_uid IS NULL THEN f.attribution END
+         ORDER BY income DESC, expense DESC`
+      )
+      .all(p);
+    res.json(
+      rows.map((r) => ({
+        name: r.name || "未标注",
+        color: r.color || null,
+        income: Number(r.income),
+        expense: Number(r.expense),
+        balance: Number(r.income) - Number(r.expense),
+      }))
+    );
+  })
+);
+
 // 分类饼图（可指定 type=expense|income）
 r.get(
   "/category",
