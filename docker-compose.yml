@@ -10,7 +10,7 @@ services:
       - PORT=9600
       - DATA_DIR=/app/data
       - JWT_SECRET=
-      - ADMIN_USERNAME=qiancheng
+      - ADMIN_USERNAME=
       - ADMIN_PASSWORD=
       - ALLOW_REGISTER=false
       - AI_BASE_URL=
