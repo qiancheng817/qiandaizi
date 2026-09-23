@@ -1,49 +1,20 @@
 services:
   qiandaizi:
-    # 拉取预编译镜像，无需本地构建。
-    # 默认走 GHCR（由本仓库 GitHub Actions 自动构建发布）：
-    #   ghcr.io/qiancheng817/qiandaizi:latest
-    # 想换镜像（如 Docker Hub 版或自建 Harbor），在 .env 里设 QIANDAIZI_IMAGE 即可覆盖：
-    #   QIANDAIZI_IMAGE=docker.io/你的账号/qiandaizi:latest
-    image: ${QIANDAIZI_IMAGE:-ghcr.io/qiancheng817/qiandaizi:latest}
+    image: ghcr.io/qiancheng817/qiandaizi:latest
     container_name: qiandaizi
-    restart: unless-stopped
-
+    restart: always
     ports:
-      # 宿主机端口:容器端口 —— 若 9600 被占用，只改冒号左边
-      - "9600:9600"
-
+      - 9600:9600
     environment:
-      TZ: Asia/Shanghai
-      PORT: 9600
-      DATA_DIR: /app/data
-
-      # ---- 必改：JWT 密钥，随便一串长随机字符 ----
-      JWT_SECRET: "${JWT_SECRET:-change-me-to-a-long-random-string}"
-
-      # ---- 首次启动自动创建的管理员账号 ----
-      ADMIN_USERNAME: "${ADMIN_USERNAME:-admin}"
-      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-admin123}"
-
-      # ---- 自助注册开关，默认关闭：账号由管理员在「用户管理」页创建 ----
-      ALLOW_REGISTER: "${ALLOW_REGISTER:-false}"
-
-      # ---- AI 记账/分析（可选，留空则自动走本地规则解析）----
-      AI_BASE_URL: "${AI_BASE_URL:-}"
-      AI_API_KEY: "${AI_API_KEY:-}"
-      AI_MODEL: "${AI_MODEL:-}"
-
+      - TZ=Asia/Shanghai
+      - PORT=9600
+      - DATA_DIR=/app/data
+      - JWT_SECRET=
+      - ADMIN_USERNAME=qiancheng
+      - ADMIN_PASSWORD=
+      - ALLOW_REGISTER=false
+      - AI_BASE_URL=
+      - AI_API_KEY=
+      - AI_MODEL=
     volumes:
-      # SQLite 数据库落在宿主机，容器删了数据还在
-      - ./data:/app/data
-
-    healthcheck:
-      test:
-        - CMD
-        - node
-        - -e
-        - "fetch('http://127.0.0.1:9600/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-      interval: 30s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
+      - /vol1/1000/docker/qiandaizi/data:/app/data
