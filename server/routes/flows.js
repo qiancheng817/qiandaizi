@@ -102,6 +102,11 @@ r.get(
     }
     if (payment) { where.push("(f.payment_method = @payment OR (@payment='未标注' AND f.payment_method=''))"); p.payment = payment; }
     if (attribution) { where.push(`${ATTR_SQL} = @attribution`); p.attribution = attribution; }
+    // 按归属用户精确筛选（首页最近记录「我的/对方」用，改昵称不影响）
+    if (req.query.attributionUid) {
+      where.push("f.attribution_uid = @attrUid");
+      p.attrUid = Number(req.query.attributionUid);
+    }
     if (keyword) { where.push("f.description LIKE @kw"); p.kw = `%${keyword}%`; }
     const w = "WHERE " + where.join(" AND ");
 

@@ -49,6 +49,64 @@ r.get(
   })
 );
 
+// 钱袋子看板：按归属人汇总「本月 / 本年」收支，外加全员历史总账。
+// 首页三张钱袋卡片共用这一个接口；未绑定用户的历史归属也按文本分桶，
+// 它们不进个人钱袋，但包含在 total 总账里。
+r.get(
+  "/moneybags",
+  requireBook,
+  wrap((req, res) => {
+    const now = new Date();
+    const month = String(req.query.month ||
+      `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`).slice(0, 7);
+    const year = month.slice(0, 4);
+
+    const rows = db
+      .prepare(
+        `SELECT f.attribution_uid AS uid,
+                COALESCE(u.nickname, f.attribution) AS nickname,
+                MAX(u.color) AS color,
+                COALESCE(SUM(CASE WHEN f.type='income'  AND substr(f.flow_time,1,7)=@m THEN f.amount END),0) AS monthIncome,
+                COALESCE(SUM(CASE WHEN f.type='expense' AND substr(f.flow_time,1,7)=@m THEN f.amount END),0) AS monthExpense,
+                COALESCE(SUM(CASE WHEN f.type='income'  AND substr(f.flow_time,1,4)=@y THEN f.amount END),0) AS yearIncome,
+                COALESCE(SUM(CASE WHEN f.type='expense' AND substr(f.flow_time,1,4)=@y THEN f.amount END),0) AS yearExpense
+           FROM flows f LEFT JOIN users u ON u.id = f.attribution_uid
+          WHERE f.book_id = @bookId
+          GROUP BY f.attribution_uid,
+                   CASE WHEN f.attribution_uid IS NULL THEN f.attribution END
+          ORDER BY f.attribution_uid`
+      )
+      .all({ bookId: req.bookId, m: month, y: year });
+
+    const totals = db
+      .prepare(
+        `SELECT COALESCE(SUM(CASE WHEN type='income'  THEN amount END),0) AS income,
+                COALESCE(SUM(CASE WHEN type='expense' THEN amount END),0) AS expense
+           FROM flows WHERE book_id = ?`
+      )
+      .get(req.bookId);
+
+    res.json({
+      month,
+      year,
+      buckets: rows.map((b) => ({
+        uid: b.uid ?? null,
+        nickname: b.nickname || "未标注",
+        color: b.color || null,
+        monthIncome: Number(b.monthIncome),
+        monthExpense: Number(b.monthExpense),
+        yearIncome: Number(b.yearIncome),
+        yearExpense: Number(b.yearExpense),
+      })),
+      total: {
+        income: Number(totals.income),
+        expense: Number(totals.expense),
+        balance: Number(totals.income) - Number(totals.expense),
+      },
+    });
+  })
+);
+
 // 分类饼图（可指定 type=expense|income）
 r.get(
   "/category",
