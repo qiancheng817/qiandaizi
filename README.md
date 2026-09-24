@@ -59,26 +59,7 @@
 > ⚠️ 不要加这些失效源：`docker.xuanyuan.me`(429 限流)、`docker.fnnas.com`(401 需登飞牛账号)、个人阿里云加速器如 `x87oljr6.mirror.aliyuncs.com`(403)。
 > 改完镜像源后**务必重启 Docker 守护进程 / 重启 NAS** 才生效。
 
-### 第 2 步：准备两个文件
-
-在 NAS 上建一个目录（示例：`/vol1/1000/docker/qiandaizi`），放进去：
-
-- `docker-compose.yml`（仓库里已写好，默认拉 `ghcr.io/qiancheng817/qiandaizi:latest`）
-- `.env`（复制 `.env.example` 改名，至少改 `JWT_SECRET` 和 `ADMIN_PASSWORD`）
-
-```ini
-JWT_SECRET=用 openssl rand -hex 32 生成的随机串
-ADMIN_USERNAME=你的管理员账号
-ADMIN_PASSWORD=你的强密码
-```
-
-> 不用传 `Dockerfile`、`server/`、`web/` 这些——镜像是现成的，只要 compose + .env。
-
-> ⚠️ **目录名只以你自己的为准，别照抄示例路径**。飞牛的共享文件夹可能是 `Docker`（大写）也可能是 `docker`（小写），还有 `/vol1`、`/vol2` 之分；写错了 Docker 会按你写的宿主路径**新建一个目录**，数据就跑到那儿去了。
-> 怎么确认真实位置：Docker → 容器 → 点已有容器 → 看它的**挂载/存储位置**。
-> 好在本 compose 用的是**相对路径** `./data:/app/data`，数据永远落在你选的那个项目目录下的 `data/`，不会另建目录——所以你只需要改 `.env`，`volumes` 不用动。
-
-### 第 3 步：启动
+### 第 2 步：启动
 
 **方式 A —— 终端（最快）**
 
@@ -99,7 +80,7 @@ docker compose up -d
 
 > 因为是拉镜像（不是本地构建），路径目录里**不需要 Dockerfile**，只要 `docker-compose.yml` + `.env` 即可。
 
-### 第 4 步：访问
+### 第 3 步：访问
 
 浏览器打开：
 
