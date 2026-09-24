@@ -2,12 +2,10 @@
 
 <p align="center"><img src="web/public/og-image.png" alt="钱袋子" width="480" /></p>
 
-基于开源项目 dingdangdog/cashbook 按需修改而来，本地已重命名为 **qiandaizi（钱袋子）**，原项目地址：https://github.com/dingdangdog/cashbook
-
 单容器 + SQLite 的个人/家庭记账应用，专为**飞牛 NAS（fnOS）**部署设计。
 一个 `docker compose up` 就跑起来，不需要额外的数据库容器。
 
-客户端项目https://github.com/qiancheng817/qiandaizi-android
+客户端项目https://github.com/qiancheng817/qiandaizi-app
 
 ## 功能一览
 
