@@ -1,5 +1,5 @@
 import dayjs from "dayjs";
-import { getSetting } from "../db.js";
+import { getSetting, setSetting } from "../db.js";
 
 // 读取已保存的模型列表（兼容旧版单配置）
 function readModels() {
