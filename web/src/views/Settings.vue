@@ -50,17 +50,19 @@ async function loadAi() {
   } catch {}
   try {
     const { data } = await api.get("/settings/baidu-ocr");
-    baiduOcr.value = { enabled: !!data.enabled, apiKey: data.apiKey || "", hasSecret: !!data.hasSecret };
+    baiduOcr.value = { enabled: !!data.enabled, apiKey: data.apiKey || "", hasSecret: !!data.hasSecret, types: data.types || [] };
     baiduApiKey.value = data.apiKey || "";
     baiduSecretKey.value = "";
+    baiduType.value = data.type || "";
   } catch {}
 }
 onMounted(loadAi);
 
 // ---------------- 百度 OCR（图片识别，无需大模型） ----------------
-const baiduOcr = ref({ enabled: false, apiKey: "", hasSecret: false });
+const baiduOcr = ref({ enabled: false, apiKey: "", hasSecret: false, types: [] });
 const baiduApiKey = ref("");
 const baiduSecretKey = ref("");
+const baiduType = ref("");
 const baiduSaving = ref(false);
 async function saveBaidu() {
   if (!baiduApiKey.value.trim() || !baiduSecretKey.value.trim()) {
@@ -71,6 +73,7 @@ async function saveBaidu() {
     await api.put("/settings/baidu-ocr", {
       apiKey: baiduApiKey.value.trim(),
       secretKey: baiduSecretKey.value.trim(),
+      type: baiduType.value,
     });
     toast("百度 OCR 设置已保存，图片记账已启用");
     await loadAi();
@@ -318,6 +321,23 @@ onMounted(loadAbout);
           <span>Secret Key{{ baiduOcr.hasSecret ? '（已保存，填新值则覆盖）' : '' }}</span>
           <input class="input" type="password" v-model="baiduSecretKey" placeholder="如 463xxxxG" autocomplete="new-password" />
         </label>
+        <label class="field" style="flex:1;min-width:160px">
+          <span>默认识别类型</span>
+          <select class="input" v-model="baiduType">
+            <option value="">标准版（默认）</option>
+            <option value="accurate_basic">高精度版</option>
+            <option value="webimage">网络图片</option>
+            <option value="general">标准含位置</option>
+            <option value="handwriting">手写识别</option>
+          </select>
+        </label>
+      </div>
+      <div class="muted" style="font-size:12px;margin-top:8px" v-if="baiduOcr.types && baiduOcr.types.length">
+        本月用量：
+        <span v-for="t in baiduOcr.types" :key="t.id" style="margin-right:12px">
+          {{ t.name }} {{ t.used }} 次<template v-if="t.exhausted">（已耗尽）</template>
+        </span>
+        <br />某接口免费额度耗尽后会自动切换到下一个接口。
       </div>
       <div class="row" style="align-items:center;gap:14px;margin-top:12px">
         <span class="tag" :style="{ color: baiduOcr.enabled ? 'var(--income)' : 'var(--text-2)' }">

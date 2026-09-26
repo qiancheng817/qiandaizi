@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { auth, requireAdmin, wrap } from "../mw.js";
 import { getSetting, setSetting } from "../db.js";
-import { aiConfig, baiduOcrConfig } from "../lib/ai.js";
+import { aiConfig, baiduOcrConfig, baiduOcrUsage, baiduOcrExhausted, OCR_TYPES } from "../lib/ai.js";
 
 const r = Router();
 r.use(auth);
@@ -105,26 +105,38 @@ function readBaiduOcr() {
 r.get("/baidu-ocr", (req, res) => {
   const saved = readBaiduOcr();
   const live = baiduOcrConfig();
+  const usage = baiduOcrUsage();
+  const exhausted = baiduOcrExhausted();
   res.json({
     enabled: live.enabled,
     apiKey: saved.apiKey ? "******" : "",
     hasSecret: !!saved.secretKey,
+    type: live.type || "",
+    // 各接口本月用量与耗尽状态，供前台展示
+    types: OCR_TYPES.map((t) => ({
+      id: t.id,
+      name: t.name,
+      used: usage[t.id] || 0,
+      exhausted: exhausted.includes(t.id),
+    })),
   });
 });
-// 保存百度 OCR 密钥。「******」占位符表示沿用原值不修改。
+// 保存百度 OCR 密钥。「******」占位符表示沿用原值不修改；type 为默认接口（空=标准版）。
 r.put(
   "/baidu-ocr",
   requireAdmin,
   wrap((req, res) => {
     let apiKey = (req.body?.apiKey || "").trim();
     let secretKey = (req.body?.secretKey || "").trim();
+    let type = (req.body?.type || "").trim();
     const saved = readBaiduOcr();
     if (apiKey === "******") apiKey = saved.apiKey || "";
     if (secretKey === "******") secretKey = saved.secretKey || "";
+    if (!OCR_TYPES.some((t) => t.id === type)) type = "";
     if (!apiKey || !secretKey) {
       return res.status(400).json({ error: "请填写百度智能云的 API Key 和 Secret Key" });
     }
-    setSetting(BAIDU_KEY, JSON.stringify({ apiKey, secretKey }));
+    setSetting(BAIDU_KEY, JSON.stringify({ apiKey, secretKey, type }));
     res.json({ ok: true });
   })
 );

@@ -42,12 +42,12 @@ r.post(
   requireBook,
   async (req, res) => {
     try {
-      const { image, text } = req.body || {};
+      const { image, text, ocrType } = req.body || {};
       if (!image) return res.status(400).json({ error: "请上传图片" });
       const cats = db
         .prepare("SELECT name, type FROM categories WHERE book_id=?")
         .all(req.bookId);
-      const result = await parseFlowImage(image, text, cats);
+      const result = await parseFlowImage(image, text, cats, ocrType || "");
       res.json(result);
     } catch (e) {
       const msg =

@@ -99,19 +99,70 @@ async function chatVision(contentParts, { json = false } = {}) {
 // 配置来源：数据库设置 baidu_ocr（网页「设置 → AI 记账」填写）优先，其次环境变量
 // BAIDU_OCR_API_KEY / BAIDU_OCR_SECRET_KEY（百度智能云「应用管理」里的 API Key + Secret Key）
 let baiduTokenCache = { token: "", expiresAt: 0 };
+// 百度 OCR 接口降级链：各接口免费额度独立计算，前一个耗尽自动换下一个
+export const OCR_TYPES = [
+  { id: "general_basic", name: "标准版" },
+  { id: "accurate_basic", name: "高精度版" },
+  { id: "webimage", name: "网络图片" },
+  { id: "general", name: "标准含位置" },
+  { id: "handwriting", name: "手写识别" },
+];
+const OCR_TYPE_IDS = OCR_TYPES.map((t) => t.id);
+// 额度类错误码：17=每日限额已满, 18=QPS超限, 19=请求总量超限（免费资源包耗尽）
+const QUOTA_ERRORS = [17, 19];
+function monthKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+function readJsonSetting(key) {
+  try {
+    return JSON.parse(getSetting(key, "")) || {};
+  } catch {
+    return {};
+  }
+}
+// 本月已标记耗尽的接口列表（跨月自动重新尝试，兼容「每月重置」和「资源包」两种额度形态）
+export function baiduOcrExhausted() {
+  const all = readJsonSetting("baidu_ocr_exhausted");
+  return all[monthKey()] || [];
+}
+// 本月各接口调用次数
+export function baiduOcrUsage() {
+  const all = readJsonSetting("baidu_ocr_usage");
+  return all[monthKey()] || {};
+}
+function markExhausted(type) {
+  const all = readJsonSetting("baidu_ocr_exhausted");
+  const mk = monthKey();
+  const list = all[mk] || [];
+  if (!list.includes(type)) list.push(type);
+  all[mk] = list;
+  setSetting("baidu_ocr_exhausted", JSON.stringify(all));
+}
+function incUsage(type) {
+  const all = readJsonSetting("baidu_ocr_usage");
+  const mk = monthKey();
+  const usage = all[mk] || {};
+  usage[type] = (usage[type] || 0) + 1;
+  all[mk] = usage;
+  setSetting("baidu_ocr_usage", JSON.stringify(all));
+}
 export function baiduOcrConfig() {
-  let apiKey = "", secretKey = "";
+  let apiKey = "", secretKey = "", type = "";
   try {
     const raw = getSetting("baidu_ocr", "");
     if (raw) {
       const c = JSON.parse(raw);
       apiKey = c.apiKey || "";
       secretKey = c.secretKey || "";
+      type = OCR_TYPE_IDS.includes(c.type) ? c.type : "";
     }
   } catch {}
   apiKey = apiKey || process.env.BAIDU_OCR_API_KEY || "";
   secretKey = secretKey || process.env.BAIDU_OCR_SECRET_KEY || "";
-  return { apiKey, secretKey, enabled: !!(apiKey && secretKey) };
+  const envType = process.env.BAIDU_OCR_TYPE || "";
+  type = type || (OCR_TYPE_IDS.includes(envType) ? envType : "");
+  return { apiKey, secretKey, type, enabled: !!(apiKey && secretKey) };
 }
 // 用 AK/SK 换 access_token（有效期约 30 天，缓存到过期前 1 分钟）
 async function getBaiduToken(apiKey, secretKey) {
@@ -131,13 +182,9 @@ async function getBaiduToken(apiKey, secretKey) {
   };
   return baiduTokenCache.token;
 }
-// 通用文字识别（标准版，quota 最大；可用 BAIDU_OCR_TYPE=accurate_basic 切高精度）
-export async function baiduOcr(imageB64) {
-  const cfg = baiduOcrConfig();
-  if (!cfg.enabled) throw new Error("NO_BAIDU_OCR");
-  const token = await getBaiduToken(cfg.apiKey, cfg.secretKey);
+// 单一接口 OCR 调用（内部用）
+async function baiduOcrSingle(imageB64, token, type) {
   const b64 = imageB64.startsWith("data:") ? imageB64.split(",")[1] : imageB64;
-  const type = process.env.BAIDU_OCR_TYPE || "general_basic";
   const resp = await fetch(
     `https://aip.baidubce.com/rest/2.0/ocr/v1/${type}?access_token=${encodeURIComponent(token)}`,
     {
@@ -147,8 +194,53 @@ export async function baiduOcr(imageB64) {
     }
   );
   const data = await resp.json().catch(() => ({}));
-  if (data.error_code) throw new Error(`百度OCR错误 ${data.error_code}: ${data.error_msg}`);
+  if (data.error_code) {
+    const err = new Error(`百度OCR错误 ${data.error_code}: ${data.error_msg}`);
+    err.baiduErrorCode = Number(data.error_code);
+    throw err;
+  }
   return (data.words_result || []).map((w) => w.words).join("\n");
+}
+// 百度 OCR（降级链 + 手动类型覆盖）
+// preferredType: 用户手动指定的类型（如 "handwriting"），优先级最高，不触发降级
+export async function baiduOcr(imageB64, preferredType) {
+  const cfg = baiduOcrConfig();
+  if (!cfg.enabled) throw new Error("NO_BAIDU_OCR");
+  const token = await getBaiduToken(cfg.apiKey, cfg.secretKey);
+  const b64 = imageB64.startsWith("data:") ? imageB64.split(",")[1] : imageB64;
+
+  // 候选接口列表
+  let candidates = [];
+  if (preferredType && OCR_TYPE_IDS.includes(preferredType)) {
+    candidates = [preferredType];
+  } else {
+    // 从配置/环境变量的默认类型开始
+    const defaultStart = cfg.type || "general_basic";
+    const idx = OCR_TYPE_IDS.indexOf(defaultStart);
+    const start = idx >= 0 ? idx : 0;
+    const exhausted = baiduOcrExhausted();
+    for (let i = start; i < OCR_TYPE_IDS.length; i++) candidates.push(OCR_TYPE_IDS[i]);
+    for (let i = 0; i < start; i++) candidates.push(OCR_TYPE_IDS[i]);
+    candidates = candidates.filter((t) => !exhausted.includes(t));
+  }
+  if (!candidates.length) throw new Error("百度 OCR 全部接口额度已耗尽");
+
+  let lastErr = null;
+  for (const type of candidates) {
+    try {
+      const text = await baiduOcrSingle(imageB64, token, type);
+      incUsage(type);
+      return { text, type };
+    } catch (e) {
+      if (QUOTA_ERRORS.includes(e.baiduErrorCode)) {
+        markExhausted(type);
+        lastErr = e;
+        continue;
+      }
+      throw e; // 非额度错误直接抛
+    }
+  }
+  throw lastErr || new Error("百度 OCR 全部接口额度已耗尽");
 }
 
 // 小票金额提取（OCR 全文专用，比普通文本的 extractAmount 更适合小票）：
@@ -181,10 +273,12 @@ function receiptTitle(text) {
 // ---------------- 图片记账（小票/账单截图识别） ----------------
 // 优先级：配置了百度 OCR → 先 OCR 提取文字，再走文字解析（规则优先，无需大模型）；
 // 未配置百度 OCR → 原有「视觉大模型」直接看图识别。
-export async function parseFlowImage(imageB64, text, categories) {
+export async function parseFlowImage(imageB64, text, categories, ocrType = "") {
   // 路径 1：百度 OCR（只填 AK/SK 即可用，不依赖任何大模型）
   if (baiduOcrConfig().enabled) {
-    const ocrText = await baiduOcr(imageB64);
+    const ocr = await baiduOcr(imageB64, ocrType);
+    const ocrText = ocr.text;
+    const ocrTypeName = (OCR_TYPES.find((t) => t.id === ocr.type) || {}).name || ocr.type;
     if (!ocrText.trim()) {
       // 图片没识别出文字：回退到与「无金额」一致的表现，金额 0 让用户在表单里补
       const allNames = categories.map((c) => c.name);
@@ -215,6 +309,9 @@ export async function parseFlowImage(imageB64, text, categories) {
     // 描述：用户没写补充说明时，用小票店名行（比规则从全文里抠出的描述更准）
     const rt = receiptTitle(ocrText);
     if (rt && !(text && text.trim())) result.description = rt;
+    // 标注来源为百度 OCR（含实际使用的接口名），前端显示「百度OCR·标准版」而非「本地规则」
+    result.source = "ocr";
+    result.ocrType = ocrTypeName;
     return result;
   }
   // 路径 2：视觉大模型（原有逻辑）
