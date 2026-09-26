@@ -151,6 +151,33 @@ export async function baiduOcr(imageB64) {
   return (data.words_result || []).map((w) => w.words).join("\n");
 }
 
+// 小票金额提取（OCR 全文专用，比普通文本的 extractAmount 更适合小票）：
+// 1) 「合计/实付/应收/总计/应付/收款」等关键词后的数字（小票最终金额）
+// 2) ¥/￥ 符号后的数字
+// 3) 兜底取全文最大金额（排除 4 位以上纯整数——年份/单号/电话），小票合计通常是最大数
+function receiptAmount(text) {
+  const t = String(text);
+  const kw = t.match(/(合计|实付|应收|总计|应付|收款|实收|总额)[^0-9¥￥]{0,8}[¥￥]?\s*(\d+(?:\.\d{1,2})?)/);
+  if (kw) return Number(kw[2]);
+  const sym = t.match(/[¥￥]\s*(\d+(?:\.\d{1,2})?)/);
+  if (sym) return Number(sym[1]);
+  const all = [...t.matchAll(/\d+(?:\.\d{1,2})?/g)]
+    .map((m) => m[0])
+    .filter((s) => !/^\d{4,}$/.test(s))
+    .map(Number)
+    .filter((n) => n > 0);
+  return all.length ? Math.max(...all) : 0;
+}
+// 小票店名：第一行含中文、且不是金额/找零类汇总行的文字，作为记账名称
+function receiptTitle(text) {
+  for (const line of String(text).split(/\r?\n/)) {
+    const s = line.trim();
+    if (/[一-龥]/.test(s) && !/^(合计|实付|应收|总计|应付|收款|找零|余额|小计)/.test(s))
+      return s.slice(0, 30);
+  }
+  return "";
+}
+
 // ---------------- 图片记账（小票/账单截图识别） ----------------
 // 优先级：配置了百度 OCR → 先 OCR 提取文字，再走文字解析（规则优先，无需大模型）；
 // 未配置百度 OCR → 原有「视觉大模型」直接看图识别。
@@ -178,7 +205,17 @@ export async function parseFlowImage(imageB64, text, categories) {
     }
     const merged = [ocrText, text && text.trim() ? `用户补充说明：${text.trim()}` : ""]
       .filter(Boolean).join("\n");
-    return parseFlowText(merged, categories);
+    const result = await parseFlowText(merged, categories);
+    // 小票修正：用户补充说明里明确给了金额则以用户为准，否则用「合计」类金额覆盖
+    // （OCR 全文里的店名/单价/日期数字会干扰普通文本的金额提取）
+    const userAmt = text && text.trim() ? extractAmount(text) : 0;
+    const ra = receiptAmount(ocrText);
+    if (userAmt > 0) result.amount = userAmt;
+    else if (ra > 0) result.amount = ra;
+    // 描述：用户没写补充说明时，用小票店名行（比规则从全文里抠出的描述更准）
+    const rt = receiptTitle(ocrText);
+    if (rt && !(text && text.trim())) result.description = rt;
+    return result;
   }
   // 路径 2：视觉大模型（原有逻辑）
   const names = categories.map((c) => c.name);
