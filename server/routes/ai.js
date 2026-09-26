@@ -2,18 +2,18 @@ import { Router } from "express";
 import dayjs from "dayjs";
 import { db } from "../db.js";
 import { auth, requireBook, wrap } from "../mw.js";
-import { parseFlowText, analyzeMonth, aiConfig, parseFlowImage } from "../lib/ai.js";
-
+import { parseFlowText, analyzeMonth, aiConfig, parseFlowImage, baiduOcrConfig } from "../lib/ai.js";
 const r = Router();
 r.use(auth);
-
 r.get("/status", (req, res) => {
   const c = aiConfig();
+  const baidu = baiduOcrConfig();
   res.json({
-    enabled: c.enabled,
+    enabled: c.enabled || baidu.enabled,
     provider: c.provider || null,
     model: c.enabled ? c.model : null,
     imageModel: c.enabled ? c.imageModel : null,
+    baiduOcr: baidu.enabled,
   });
 });
 
@@ -52,7 +52,7 @@ r.post(
     } catch (e) {
       const msg =
         e.message === "NO_AI"
-          ? "未配置 AI 视觉模型，请先在「设置 → AI 记账」里填写图片模型与密钥"
+          ? "未配置图片识别：请到「设置 → AI 记账」填写百度 OCR 的 API Key 和 Secret Key（推荐，无需大模型），或配置 AI 视觉模型"
           : e.message;
       res.status(e.message === "NO_AI" ? 400 : 500).json({ error: msg });
     }

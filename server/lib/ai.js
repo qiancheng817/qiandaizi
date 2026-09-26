@@ -95,9 +95,92 @@ async function chatVision(contentParts, { json = false } = {}) {
   return data.choices?.[0]?.message?.content || "";
 }
 
+// ---------------- 百度 OCR（图片文字识别，无需大模型） ----------------
+// 配置来源：数据库设置 baidu_ocr（网页「设置 → AI 记账」填写）优先，其次环境变量
+// BAIDU_OCR_API_KEY / BAIDU_OCR_SECRET_KEY（百度智能云「应用管理」里的 API Key + Secret Key）
+let baiduTokenCache = { token: "", expiresAt: 0 };
+export function baiduOcrConfig() {
+  let apiKey = "", secretKey = "";
+  try {
+    const raw = getSetting("baidu_ocr", "");
+    if (raw) {
+      const c = JSON.parse(raw);
+      apiKey = c.apiKey || "";
+      secretKey = c.secretKey || "";
+    }
+  } catch {}
+  apiKey = apiKey || process.env.BAIDU_OCR_API_KEY || "";
+  secretKey = secretKey || process.env.BAIDU_OCR_SECRET_KEY || "";
+  return { apiKey, secretKey, enabled: !!(apiKey && secretKey) };
+}
+// 用 AK/SK 换 access_token（有效期约 30 天，缓存到过期前 1 分钟）
+async function getBaiduToken(apiKey, secretKey) {
+  const now = Date.now();
+  if (baiduTokenCache.token && baiduTokenCache.expiresAt > now + 60_000)
+    return baiduTokenCache.token;
+  const resp = await fetch(
+    `https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=${encodeURIComponent(apiKey)}&client_secret=${encodeURIComponent(secretKey)}`,
+    { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" } }
+  );
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || !data.access_token)
+    throw new Error(`百度OCR鉴权失败: ${data.error_description || data.error || resp.status}`);
+  baiduTokenCache = {
+    token: data.access_token,
+    expiresAt: now + (Number(data.expires_in) || 30 * 24 * 3600) * 1000,
+  };
+  return baiduTokenCache.token;
+}
+// 通用文字识别（标准版，quota 最大；可用 BAIDU_OCR_TYPE=accurate_basic 切高精度）
+export async function baiduOcr(imageB64) {
+  const cfg = baiduOcrConfig();
+  if (!cfg.enabled) throw new Error("NO_BAIDU_OCR");
+  const token = await getBaiduToken(cfg.apiKey, cfg.secretKey);
+  const b64 = imageB64.startsWith("data:") ? imageB64.split(",")[1] : imageB64;
+  const type = process.env.BAIDU_OCR_TYPE || "general_basic";
+  const resp = await fetch(
+    `https://aip.baidubce.com/rest/2.0/ocr/v1/${type}?access_token=${encodeURIComponent(token)}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ image: b64 }).toString(),
+    }
+  );
+  const data = await resp.json().catch(() => ({}));
+  if (data.error_code) throw new Error(`百度OCR错误 ${data.error_code}: ${data.error_msg}`);
+  return (data.words_result || []).map((w) => w.words).join("\n");
+}
+
 // ---------------- 图片记账（小票/账单截图识别） ----------------
-// 用视觉模型把图片 + 可选文字说明识别成一笔记账
+// 优先级：配置了百度 OCR → 先 OCR 提取文字，再走文字解析（规则优先，无需大模型）；
+// 未配置百度 OCR → 原有「视觉大模型」直接看图识别。
 export async function parseFlowImage(imageB64, text, categories) {
+  // 路径 1：百度 OCR（只填 AK/SK 即可用，不依赖任何大模型）
+  if (baiduOcrConfig().enabled) {
+    const ocrText = await baiduOcr(imageB64);
+    if (!ocrText.trim()) {
+      // 图片没识别出文字：回退到与「无金额」一致的表现，金额 0 让用户在表单里补
+      const allNames = categories.map((c) => c.name);
+      const isIncome = /(工资|薪资|收入|到账|入账|收款|报销|红包|奖金)/.test(text || "");
+      const explicit = explicitCategory(text || "", allNames);
+      const fbCat = explicit
+        || (isIncome
+          ? (allNames.includes("其它") ? "其它" : allNames[0] || "其他")
+          : (allNames.includes("其他") ? "其他" : allNames.find((n) => n !== "其它") || "其他"));
+      return buildResult({
+        type: isIncome ? "income" : "expense",
+        amount: 0,
+        category: fbCat,
+        description: (text || "图片未识别出文字").trim().slice(0, 30),
+        payment_method: "",
+        source: "noamount",
+      });
+    }
+    const merged = [ocrText, text && text.trim() ? `用户补充说明：${text.trim()}` : ""]
+      .filter(Boolean).join("\n");
+    return parseFlowText(merged, categories);
+  }
+  // 路径 2：视觉大模型（原有逻辑）
   const names = categories.map((c) => c.name);
   const note = text && text.trim() ? `用户补充说明：${text.trim()}。` : "";
   const sys = `你是记账助手。根据用户上传的账单/小票图片${note}识别成一笔记账JSON：{"type":"expense或income","amount":数字,"category":"分类","description":"简述","payment_method":"支付方式或空"}。

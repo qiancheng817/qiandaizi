@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { auth, requireAdmin, wrap } from "../mw.js";
 import { getSetting, setSetting } from "../db.js";
-import { aiConfig } from "../lib/ai.js";
+import { aiConfig, baiduOcrConfig } from "../lib/ai.js";
 
 const r = Router();
 r.use(auth);
@@ -88,6 +88,43 @@ r.put(
     if (!out.some((m) => m.isDefault)) out[0].isDefault = true;
 
     writeModels(out);
+    res.json({ ok: true });
+  })
+);
+
+// ---------- 百度 OCR（图片识别，无需大模型） ----------
+const BAIDU_KEY = "baidu_ocr";
+function readBaiduOcr() {
+  try {
+    return JSON.parse(getSetting(BAIDU_KEY, "")) || {};
+  } catch {
+    return {};
+  }
+}
+// 读取百度 OCR 配置（密钥脱敏，避免明文暴露）
+r.get("/baidu-ocr", (req, res) => {
+  const saved = readBaiduOcr();
+  const live = baiduOcrConfig();
+  res.json({
+    enabled: live.enabled,
+    apiKey: saved.apiKey ? "******" : "",
+    hasSecret: !!saved.secretKey,
+  });
+});
+// 保存百度 OCR 密钥。「******」占位符表示沿用原值不修改。
+r.put(
+  "/baidu-ocr",
+  requireAdmin,
+  wrap((req, res) => {
+    let apiKey = (req.body?.apiKey || "").trim();
+    let secretKey = (req.body?.secretKey || "").trim();
+    const saved = readBaiduOcr();
+    if (apiKey === "******") apiKey = saved.apiKey || "";
+    if (secretKey === "******") secretKey = saved.secretKey || "";
+    if (!apiKey || !secretKey) {
+      return res.status(400).json({ error: "请填写百度智能云的 API Key 和 Secret Key" });
+    }
+    setSetting(BAIDU_KEY, JSON.stringify({ apiKey, secretKey }));
     res.json({ ok: true });
   })
 );

@@ -48,8 +48,39 @@ async function loadAi() {
     aiModels.value = data.models || [];
     aiStatus.value = { enabled: data.enabled };
   } catch {}
+  try {
+    const { data } = await api.get("/settings/baidu-ocr");
+    baiduOcr.value = { enabled: !!data.enabled, apiKey: data.apiKey || "", hasSecret: !!data.hasSecret };
+    baiduApiKey.value = data.apiKey || "";
+    baiduSecretKey.value = "";
+  } catch {}
 }
 onMounted(loadAi);
+
+// ---------------- 百度 OCR（图片识别，无需大模型） ----------------
+const baiduOcr = ref({ enabled: false, apiKey: "", hasSecret: false });
+const baiduApiKey = ref("");
+const baiduSecretKey = ref("");
+const baiduSaving = ref(false);
+async function saveBaidu() {
+  if (!baiduApiKey.value.trim() || !baiduSecretKey.value.trim()) {
+    return toast("请填写百度智能云的 API Key 和 Secret Key");
+  }
+  baiduSaving.value = true;
+  try {
+    await api.put("/settings/baidu-ocr", {
+      apiKey: baiduApiKey.value.trim(),
+      secretKey: baiduSecretKey.value.trim(),
+    });
+    toast("百度 OCR 设置已保存，图片记账已启用");
+    await loadAi();
+    store.fetchAiStatus();
+  } catch (e) {
+    toast(e.message);
+  } finally {
+    baiduSaving.value = false;
+  }
+}
 
 // 服务器操作日志
 const opLogs = ref([]);
@@ -266,6 +297,33 @@ onMounted(loadAbout);
           {{ aiStatus.enabled ? "● 已启用" : "○ 未启用" }}
         </span>
         <button class="btn btn-primary" :disabled="aiSaving" @click="saveAi">{{ aiSaving ? "保存中…" : "保存 AI 设置" }}</button>
+      </div>
+    </div>
+
+    <!-- 百度 OCR（图片识别，推荐） -->
+    <div class="card" style="margin-top:16px" v-if="isAdmin">
+      <div class="section-title">百度 OCR 图片识别（推荐，无需大模型）</div>
+      <p class="muted" style="font-size:13px;margin:0 0 14px;line-height:1.7">
+        在 <a href="https://console.bce.baidu.com/ai-engine/old/#/ai-engine/overview/appindex" target="_blank" rel="noreferrer">百度智能云控制台</a>
+        「产品服务 → 公有云服务 → 应用管理」创建一个应用（勾选<b>文字识别</b>能力），把应用的
+        <b>API Key</b> 和 <b>Secret Key</b> 填到下面保存即可。<br />
+        填好后，App / 网页的图片记账会自动走「百度 OCR 提取文字 → 本地规则解析」，<b>不需要再配置任何 AI 大模型</b>。
+      </p>
+      <div class="row form-row">
+        <label class="field" style="flex:1;min-width:200px">
+          <span>API Key{{ baiduOcr.apiKey ? '（已保存，填新值则覆盖）' : '' }}</span>
+          <input class="input" type="password" v-model="baiduApiKey" placeholder="如 jlu4xxxxil+S" autocomplete="new-password" />
+        </label>
+        <label class="field" style="flex:1;min-width:200px">
+          <span>Secret Key{{ baiduOcr.hasSecret ? '（已保存，填新值则覆盖）' : '' }}</span>
+          <input class="input" type="password" v-model="baiduSecretKey" placeholder="如 463xxxxG" autocomplete="new-password" />
+        </label>
+      </div>
+      <div class="row" style="align-items:center;gap:14px;margin-top:12px">
+        <span class="tag" :style="{ color: baiduOcr.enabled ? 'var(--income)' : 'var(--text-2)' }">
+          {{ baiduOcr.enabled ? "● 已启用" : "○ 未启用" }}
+        </span>
+        <button class="btn btn-primary" :disabled="baiduSaving" @click="saveBaidu">{{ baiduSaving ? "保存中…" : "保存百度 OCR" }}</button>
       </div>
     </div>
 
